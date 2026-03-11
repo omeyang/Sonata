@@ -1,0 +1,140 @@
+# Sonata golangci-lint 配置
+# 与 Clarion 保持一致的 lint 标准
+
+version: "2"
+
+linters:
+  enable:
+    # ── 正确性 ──────────────────────────────────────────
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+
+    # ── 错误处理 ────────────────────────────────────────
+    - nilerr
+    - errorlint
+    - wrapcheck
+
+    # ── Bug 预防 ────────────────────────────────────────
+    - bodyclose
+    - noctx
+    - copyloopvar
+
+    # ── 代码质量 ────────────────────────────────────────
+    - revive
+    - goconst
+    - gocyclo
+    - funlen
+    - nestif
+    - unconvert
+    - unparam
+    - nakedret
+    - dupword
+
+    # ── 安全 ────────────────────────────────────────────
+    - gosec
+
+    # ── 风格一致性 ──────────────────────────────────────
+    - whitespace
+    - godot
+    - errname
+    - exhaustive
+
+    # ── nolint 管控 ─────────────────────────────────────
+    - nolintlint
+
+    # ── 性能 ────────────────────────────────────────────
+    - perfsprint
+    - intrange
+    - usestdlibvars
+
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    errcheck:
+      check-type-assertions: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    gocyclo:
+      min-complexity: 15
+
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+
+    nestif:
+      min-complexity: 4
+
+    nakedret:
+      max-func-lines: 10
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: var-declaration
+        - name: var-naming
+
+    gosec:
+      excludes:
+        - G104    # errcheck 已覆盖
+        - G115    # PCM 音频处理中的整数转换是安全的
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+  exclusions:
+    generated: strict
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - gocyclo
+          - wrapcheck
+          - errcheck
+          - bodyclose
+          - goconst
+          - dupword
+
+    paths:
+      - third_party
+      - ".*\\.pb\\.go$"
+      - ".*_gen\\.go$"
+
+formatters:
+  enable:
+    - goimports
+
+severity:
+  default: error

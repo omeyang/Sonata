@@ -1,0 +1,128 @@
+version: "3"
+
+vars:
+  COVERAGE_DIR: .coverage
+  MIN_COVERAGE: "95"
+
+tasks:
+  default:
+    desc: 显示所有可用任务
+    cmds:
+      - task --list
+
+  # ── 测试 ──────────────────────────────────────────────
+
+  test:
+    desc: 运行所有测试
+    cmds:
+      - go test -race -count=1 ./engine/...
+
+  test:unit:
+    desc: 运行单元测试（排除集成测试）
+    cmds:
+      - go test -race -count=1 -short ./engine/...
+
+  test:bench:
+    desc: 运行基准测试
+    cmds:
+      - go test -bench=. -benchmem -run=^$ ./engine/...
+
+  bench:save:
+    desc: 保存基准测试基线（-count=5，结果写入 .benchmark/）
+    cmds:
+      - mkdir -p .benchmark
+      - go test -bench=. -benchmem -run=^$ -count=5 ./engine/... | tee .benchmark/baseline.txt
+      - echo "基线已保存到 .benchmark/baseline.txt"
+
+  bench:compare:
+    desc: 与基线对比（需要先运行 bench:save）
+    cmds:
+      - go test -bench=. -benchmem -run=^$ -count=5 ./engine/... > .benchmark/current.txt
+      - benchstat .benchmark/baseline.txt .benchmark/current.txt
+
+  test:fuzz:
+    desc: 运行模糊测试（默认 30 秒）
+    vars:
+      FUZZ_TIME: '{{default "30s" .FUZZ_TIME}}'
+    cmds:
+      - go test -fuzz=. -fuzztime={{.FUZZ_TIME}} ./engine/pcm/
+      - go test -fuzz=. -fuzztime={{.FUZZ_TIME}} ./engine/mediafsm/
+      - go test -fuzz=. -fuzztime={{.FUZZ_TIME}} ./engine/aiface/
+
+  # ── 覆盖率 ────────────────────────────────────────────
+
+  cover:
+    desc: 生成覆盖率报告并检查阈值
+    cmds:
+      - mkdir -p {{.COVERAGE_DIR}}
+      - go test -race -coverprofile={{.COVERAGE_DIR}}/coverage.out -covermode=atomic ./engine/...
+      - go tool cover -func={{.COVERAGE_DIR}}/coverage.out
+      - |
+        TOTAL=$(go tool cover -func={{.COVERAGE_DIR}}/coverage.out | grep total | awk '{print $3}' | tr -d '%')
+        echo "总覆盖率: ${TOTAL}%（阈值: {{.MIN_COVERAGE}}%）"
+        if [ "$(echo "$TOTAL < {{.MIN_COVERAGE}}" | bc -l)" = "1" ]; then
+          echo "覆盖率低于 {{.MIN_COVERAGE}}%，测试失败"
+          exit 1
+        fi
+
+  cover:html:
+    desc: 在浏览器中打开覆盖率报告
+    deps: [cover]
+    cmds:
+      - go tool cover -html={{.COVERAGE_DIR}}/coverage.out -o {{.COVERAGE_DIR}}/coverage.html
+      - echo "覆盖率报告已生成：{{.COVERAGE_DIR}}/coverage.html"
+
+  # ── Lint ───────────────────────────────────────────────
+
+  lint:
+    desc: 运行 golangci-lint
+    cmds:
+      - golangci-lint run ./engine/...
+
+  lint:fix:
+    desc: 运行 golangci-lint 并自动修复
+    cmds:
+      - golangci-lint run --fix ./engine/...
+
+  # ── 构建验证 ──────────────────────────────────────────
+
+  build:
+    desc: 编译所有包（仅验证，不产出二进制）
+    cmds:
+      - go build ./engine/...
+
+  vet:
+    desc: 运行 go vet
+    cmds:
+      - go vet ./engine/...
+
+  # ── 综合检查 ──────────────────────────────────────────
+
+  ci:
+    desc: CI 流水线（lint + test + coverage）
+    cmds:
+      - task: lint
+      - task: test
+      - task: cover
+
+  # ── sherpa 子模块 ──────────────────────────────────────
+
+  sherpa:test:
+    desc: 测试 sherpa 子模块（需要 CGO）
+    dir: sherpa
+    cmds:
+      - go test -race -count=1 ./...
+
+  sherpa:build:
+    desc: 编译 sherpa 子模块
+    dir: sherpa
+    cmds:
+      - go build ./...
+
+  # ── 清理 ──────────────────────────────────────────────
+
+  clean:
+    desc: 清理生成的文件
+    cmds:
+      - rm -rf {{.COVERAGE_DIR}}
+      - go clean -testcache
