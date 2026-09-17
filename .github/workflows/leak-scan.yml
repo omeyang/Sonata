@@ -1,0 +1,51 @@
+name: leak-scan
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+
+      - name: Write rules
+        env:
+          RULES: ${{ secrets.LEAKSCAN_RULES }}
+        run: |
+          if [ -n "$RULES" ]; then
+            printf '%s\n' "$RULES" > "$RUNNER_TEMP/rules.toml"
+          else
+            printf '[extend]\nuseDefault = true\n' > "$RUNNER_TEMP/rules.toml"
+            echo "::warning::LEAKSCAN_RULES secret not set, using gitleaks defaults only"
+          fi
+
+      - name: Scan pushed commits
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          zero=0000000000000000000000000000000000000000
+          case "$EVENT" in
+            push)
+              if [ "$BEFORE" = "$zero" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then range="$AFTER"; else range="$BEFORE..$AFTER"; fi ;;
+            pull_request) range="$PR_BASE..$PR_HEAD" ;;
+            *) range="" ;;   # workflow_dispatch: full history
+          esac
+          echo "scanning range: ${range:-<all>}"
+          gitleaks git --no-banner --redact=60 --verbose -c "$RUNNER_TEMP/rules.toml" ${range:+--log-opts="$range"} .
